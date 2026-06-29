@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""health-extract.py v6 — 从 HAE 自动化 JSON 提取指定日期的生理指标
+"""health-extract.py v7 — 从 HAE 自动化 JSON 提取指定日期的生理指标
 HRV/RHR 取中位数抗离群，避免单个噪声采样点污染结果
 v4: 修复步数/活跃能量按小时汇总（原仅取首个条目）、Walking HR 改用均值
 v5: 新增碎步比——间歇性走动的能耗指数（hourly阈值版）
-v6: 碎步升级为 bout 检测（参考 JeffenCheung/personal-health-dashboard）、新增步态指标"""
+v6: 碎步升级为 bout 检测（参考 JeffenCheung/personal-health-dashboard）、新增步态指标
+v7: 追加写入 daily-canonical.jsonl（跨日查询不再逐文件读取，参考 duanyu119/open-health-database）"""
 import json, sys, statistics, os
 from datetime import datetime, timedelta
 
@@ -215,5 +216,24 @@ if os.path.exists(vo2_csv):
                     if len(recent90) >= 3:
                         out['vo2max_90d_trend'] = f"{recent90[-1][1] - recent90[0][1]:+.1f}"
     except: pass
+
+# v7: 写入 daily-canonical.jsonl（跨日查询不再逐文件读取）
+canonical_file = os.path.expanduser("~/.life-log/daily-canonical.jsonl")
+try:
+    existing_dates = set()
+    if os.path.exists(canonical_file):
+        with open(canonical_file) as cf:
+            for line in cf:
+                line = line.strip()
+                if line:
+                    try:
+                        existing_dates.add(json.loads(line).get('date', ''))
+                    except: pass
+    if date not in existing_dates:
+        out['date'] = date
+        with open(canonical_file, 'a') as cf:
+            cf.write(json.dumps(out, ensure_ascii=False) + '\n')
+except Exception:
+    pass  # 静默失败，不影响主流程
 
 print(json.dumps(out))

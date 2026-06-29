@@ -59,7 +59,7 @@ API 失败时保留已有数据，不覆盖。
 
 | 脚本 | 用途 |
 |------|------|
-| `health-extract.py` (v6) | RHR/HRV/睡眠/步数/碎步/步态/VO2Max |
+| `health-extract.py` (v7) | RHR/HRV/睡眠/步数/碎步/步态/VO2Max → daily-canonical.jsonl |
 | `health-freshness.py` | 数据新鲜度检查 |
 | `focus-predict.py` | 专注力预判 |
 | `score.py` | 精力+压力评分 |

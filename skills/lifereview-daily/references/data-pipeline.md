@@ -65,3 +65,9 @@ python3 ~/.life-log/tmp/rest-receiver.py --port 8765
 ```
 
 HAE App 配置：Custom REST Endpoint → `http://<Mac-IP>:8765/health`
+
+## daily-canonical 表（v7 新增）
+
+health-extract.py v7 每次运行后自动追加一行到 `~/.life-log/daily-canonical.jsonl`（JSONL 格式，每行一天）。自动按日期去重，同一天不会重复写入。
+
+**用途**：周报/月报不再需要逐日重读原始 JSON 文件——直接读 canonical 文件，Python 一行搞定 `[json.loads(l) for l in open('daily-canonical.jsonl')]`。
