@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""health-extract.py v7 — 从 HAE 自动化 JSON 提取指定日期的生理指标
-HRV/RHR 取中位数抗离群，避免单个噪声采样点污染结果
-v4: 修复步数/活跃能量按小时汇总（原仅取首个条目）、Walking HR 改用均值
-v5: 新增碎步比——间歇性走动的能耗指数（hourly阈值版）
-v6: 碎步升级为 bout 检测（参考 JeffenCheung/personal-health-dashboard）、新增步态指标
-v7: 追加写入 daily-canonical.jsonl（跨日查询不再逐文件读取，参考 duanyu119/open-health-database）"""
+"""health-extract.py v8 — 从 HAE 自动化 JSON 提取指定日期的生理指标
+v4: 修复步数/活跃能量按小时汇总、Walking HR 改用均值
+v5: 新增碎步比（hourly阈值版）
+v6: 碎步升级为 bout 检测（参考 JeffenCheung/personal-health-dashboard）
+v7: 追加写入 daily-canonical.jsonl（参考 duanyu119/open-health-database）
+v8: RHR交叉验证(夜间raw HR最低值) + 日间心率-活动耦合指标"""
 import json, sys, statistics, os
 from datetime import datetime, timedelta
 
@@ -19,6 +19,43 @@ if 'resting_heart_rate' in mm:
     vals = [p['qty'] for p in mm['resting_heart_rate']['data'] if p.get('qty')]
     if vals:
         out['rhr'] = f"{statistics.median(vals):.0f}"
+# v8: RHR 交叉验证——当 RHR 只有单日汇总时，用夜间 raw heart_rate 最低值验证
+# Apple Watch 的 resting_heart_rate 可能只有 1 条/天，raw heart_rate 有 24 条小时 Avg
+if 'heart_rate' in mm:
+    hr_pts = [(int(p['date'].split()[1][:2]), p) for p in mm['heart_rate']['data']]
+    night_hr = [(h, p['Avg'], p.get('Min', p['Avg'])) for h, p in hr_pts if 0 <= h < 6]
+    day_hr = [(h, p['Avg'], p.get('Min', p['Avg'])) for h, p in hr_pts if 8 <= h < 22]
+    if night_hr:
+        night_avgs = [a for _, a, _ in night_hr]
+        night_mins = [m for _, _, m in night_hr if m]
+        out['night_hr_lowest'] = f"{min(night_avgs):.0f}"  # 夜间最低平均心率
+        out['night_hr_median'] = f"{statistics.median(night_avgs):.0f}"
+    # v8: 日间心率-活动耦合——看心率是否跟步数/energy同步变化
+    # 高耦合 = 心脏对活动响应灵敏（健康）；低耦合 = 可能疲劳/过度训练/自主神经迟钝
+    if day_hr and 'step_count' in mm:
+        step_hourly = [p.get('qty', 0) or 0 for p in mm['step_count']['data']]
+        pairs = []
+        for h, avg_hr, min_hr in day_hr:
+            if h < len(step_hourly) and step_hourly[h] > 0:
+                pairs.append((step_hourly[h], avg_hr))
+        if len(pairs) >= 4:
+            # Pearson r between steps and HR
+            n = len(pairs)
+            sx = sum(p[0] for p in pairs); sy = sum(p[1] for p in pairs)
+            sxx = sum(p[0]**2 for p in pairs); syy = sum(p[1]**2 for p in pairs)
+            sxy = sum(p[0]*p[1] for p in pairs)
+            denom = ((n*sxx - sx**2) * (n*syy - sy**2)) ** 0.5
+            if denom > 0:
+                r = (n*sxy - sx*sy) / denom
+                out['hr_activity_coupling'] = f"{r:.2f}"
+                if r > 0.6:
+                    out['hr_activity_label'] = '高耦合——心脏对活动响应灵敏'
+                elif r > 0.3:
+                    out['hr_activity_label'] = '中耦合——正常范围'
+                elif r > 0:
+                    out['hr_activity_label'] = '弱耦合——可能疲劳或自主神经迟钝'
+                else:
+                    out['hr_activity_label'] = '解耦——生理状态需关注'
 # Fallback: RHR 未同步时扫描附近几天（今天优先，昨天次之）
 if 'rhr' not in out:
     base_dir = os.path.dirname(sys.argv[1])

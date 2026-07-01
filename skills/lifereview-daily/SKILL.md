@@ -1,7 +1,7 @@
 ---
 name: lifereview-daily
-version: 4.3.0
-description: "每日生命回顾——生成晨间简报含裁决/叙事/新视角/碎步指数。不负责：周报(用weekly skill)、营养咨询(用ask-guzhongyi)、体检报告解读(单独处理)。"
+version: 4.4.0
+description: "每日生命回顾——裁决/叙事/新视角/碎步指数/心率-活动耦合。不负责：周报(用weekly skill)、营养咨询(用ask-guzhongyi)、体检报告解读(单独处理)。"
 metadata:
   requires:
     bins: [python3, jq, lark-cli]
@@ -98,16 +98,26 @@ API 失败时保留已有数据，不覆盖。
 
 详见 `references/data-pipeline.md`
 
-## 视角系统（15 个轮换 · 6 家族）
+## 视角系统（16 个轮换 · 6 家族）
 
 A.工作节奏：`meeting_type` `looki_gap`
-B.生理恢复：`hrv_trend` `rhr_recovery` `sleep_quality` `load_recovery_balance`
+B.生理恢复：`hrv_trend` `rhr_recovery` `sleep_quality` `load_recovery_balance` **`hr_activity_coupling`** ← v4.4 新增
 C.感官/环境：`steps_vs_energy`
 D.行为信号：`indulge_signal` `signal_cascade` `boundary_erosion`
 E.纵向自我：`mindful_paradox` `deep_sleep_trend` `last_drink_linger` `movement_deficit`
 F.社交/连接：`social_connection`
 
-连续 3 天家族不重复。轮换状态在 `~/.life-log/tmp/perspective-tracker.txt`
+连续 3 天家族不重复。
+
+### hr_activity_coupling 视角（v4.4 新增）
+
+步数 vs 实时心率的 Pearson r：心脏在跟你合作还是在抗拒？
+- r > 0.6 → 高耦合，心脏响应灵敏
+- r 0.3-0.6 → 正常
+- r 0-0.3 → 弱耦合，可能疲劳
+- r < 0 → 解耦，需关注。但**力量训练日解耦是正常的**——训练时高心率+低步数会拉低相关性。如果当天有力量训练且用户主观感受良好，解耦可能是训练效应而非恢复赤字。
+
+**校准记录（7/1）**：6/30 上午力量训练 + 全天精力平稳感受好，但 r=−0.43 显示解耦。用户反馈："精力比较平稳，晚上困得早因为醒得早"。结论：力量训练日的负耦合不宜直接解读为"恢复系统罢工"，需结合主观感受和 Looki 场景。
 
 ## 定时任务
 
