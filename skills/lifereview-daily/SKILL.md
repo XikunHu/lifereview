@@ -155,6 +155,13 @@ F.社交/连接：`social_connection`
 | 因果探索 | 23:17 | launchd → `causal-explorer.py` |
 | AI 周报 | 周日 11:00 | Proma automation |
 
+## Bot 与群聊（2026-07-04 迁移）
+
+- **唯一沟通 Bot**: `cli_aac21c9397799bdf`（lark-cli profile: `cli_aac21c9397799bdf`）
+- **主群**: `oc_42eff3f4c6d4297bf9a04772e92d53ca`（Proma - Looki）
+- 所有自动化推送到此群，旧 Bot `cli_a93f9c734d61dcd5` 已废弃
+- Nixon 在新 Bot 下的 open_id: `ou_e236f3599d28aae4a18d8df04fc93d4a`
+
 ## 晨间报告模板（v4.3）
 
 1. **数据审计** — `HAE ✅ | Looki ✅10段 | Realtime ✅ | 日历 ✅`
