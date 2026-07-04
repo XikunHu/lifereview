@@ -1,7 +1,7 @@
 ---
 name: lifereview-daily
 version: 4.4.0
-description: "每日生命回顾——裁决/叙事/新视角/碎步指数/心率-活动耦合。不负责：周报(用weekly skill)、营养咨询(用ask-guzhongyi)、体检报告解读(单独处理)。"
+description: "Nixon 每日生命回顾——裁决/叙事/新视角/碎步指数/心率-活动耦合。不负责：周报(用weekly skill)、营养咨询(用ask-guzhongyi)、体检报告解读(单独处理)。"
 metadata:
   requires:
     bins: [python3, jq, lark-cli]
@@ -9,7 +9,7 @@ metadata:
 
 # lifereview-daily — 每日生命回顾
 
-为 提供每日状态分析，融合 Apple Watch HAE + Looki AI 相机 + 飞书日历。
+为 Nixon 提供每日状态分析，融合 Apple Watch HAE + Looki AI 相机 + 飞书日历。
 
 ## 快速索引
 
@@ -57,14 +57,15 @@ API 失败时保留已有数据，不覆盖。
 
 ## 关键脚本
 
-| 脚本 | 用途 |
-|------|------|
-| `health-extract.py` (v7) | RHR/HRV/睡眠/步数/碎步/步态/VO2Max → daily-canonical.jsonl |
-| `health-freshness.py` | 数据新鲜度检查 |
-| `focus-predict.py` | 专注力预判 |
-| `score.py` | 精力+压力评分 |
-| `daily-narrative.py` | 15视角轮换叙事引擎 |
-| `proma-send.py` | 飞书消息推送（凭据在 `~/.life-log/secrets/`） |
+| 脚本 | 版本 | 用途 |
+|------|------|------|
+| `health-extract.py` | **v10** | RHR/HRV/睡眠/步数/碎步/步态/VO2Max → daily-canonical.jsonl。v10: 睡眠夜晚归属校验 + --expected-sleep-night |
+| `health-freshness.py` | **v2** | 数据新鲜度检查 + 睡眠文件就绪检查（sleep_file_ready） |
+| `focus-predict.py` | — | 专注力预判 |
+| `score.py` | — | 精力+压力评分 |
+| `daily-narrative.py` | — | 16视角轮换叙事引擎 |
+| `looki-x-parser.py` | **v1** | 从 Looki moments 自动提取 X 事件（服药/饮酒/咖啡等）→ x-events.jsonl |
+| `rest-receiver.py` | — | HAE REST 接收器（可选，绕开 iCloud 延迟） |
 
 ## 健康基线
 
@@ -89,12 +90,38 @@ API 失败时保留已有数据，不覆盖。
 - 🟡 运动日精力反而更低（恢复没跟上）
 - 🟡 A/G>1.0+VAT+斑块（腹部脂肪独立风险维度）
 
-## 四大防护规则
+## HRV 数据口径（v4.5 · 2026-07-02 事故教训）
+
+**事故**：7/1→7/2 酒店夜 HRV 5 次采样 [71, 41, 42, 39, 71]，中位数=42。报告说「HRV 69→42，系统透支」。实际早晨已恢复至 71，用户主观感受「非常好」。中位数 42 把 V 型恢复曲线压成了一个灾难数字。
+
+**规则**：
+
+1. **主报 7 日滚动均值，不报单夜中位数**。`hrv_7d_avg` 才是稳定信号。单夜中位数只作为补充参考
+2. **HRV 数字必须带口径**：样本数（hrv_n）、范围（hrv_range）、早晨恢复读数（hrv_morning）。格式：`7 晚均值 56ms（4 晚），昨晚中位数 42ms（5 次采样，范围 40-71，晨间已恢复至 71）`
+3. **<5 次夜间采样时强制标注「小样本」**（hrv_sparse=true），此时中位数参考价值有限
+4. **HRV 单夜值聚合方式**：取 0-9 点所有读数的**均值**（v9.1 从中位数改为均值，V 型分布时均值更诚实），排除 >2 倍均值的离群值
+5. **绝对禁止**：只报一个孤零零的 HRV 数字不说明口径。禁止把单夜中位数当成「你的 HRV 是 XX」
+
+## 睡眠数据校验（v4.5 · 2026-07-04）
+
+**事故**：7/4 晨报拿 7/3 HAE 文件的睡眠（7/2→7/3 上海夜）当成「昨晚 7/3→7/4 北京夜」分析，整篇报告的睡眠结论全错。
+
+**双重防护**：
+
+### 第一层：提取时校验（health-extract.py v10）
+入睡时间是否在预期窗口。分析 7/3→7/4 夜 → 入睡必须在 7/3 18:00 ~ 7/4 12:00。不在窗口 → `sleep_night_mismatch=true`。
+用法：`health-extract.py file.json 2026-07-04 --expected-sleep-night 2026-07-03`。不匹配时 exit 2。
+
+### 第二层：报告前检查（health-freshness.py v2）
+生成晨报前检查今天的 HAE 文件是否到达。≥09:00 但文件缺失 → `sleep_file_ready=false` → 仅分析白天活动，不编造睡眠数据。
+
+## 五大防护规则
 
 1. **Looki 用 Python 直连 IP**（禁止 curl——VPN SNI 拦截）
 2. **每次实时跑 freshness**（禁止缓存）
 3. **消息走 stdin**（禁止 argv——shell 破坏换行符）
 4. **聚合显式声明**（sum/median/first，禁止假设）
+5. **HRV 必须报 7 日均值 + 带口径**（禁止裸数字，禁止单夜中位数当主数字）
 
 详见 `references/data-pipeline.md`
 
