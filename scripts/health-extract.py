@@ -1,15 +1,28 @@
 #!/usr/bin/env python3
-"""health-extract.py v8 — 从 HAE 自动化 JSON 提取指定日期的生理指标
+"""health-extract.py 20260707 — 从 HAE 自动化 JSON 提取指定日期的生理指标
 v4: 修复步数/活跃能量按小时汇总、Walking HR 改用均值
 v5: 新增碎步比（hourly阈值版）
 v6: 碎步升级为 bout 检测（参考 JeffenCheung/personal-health-dashboard）
 v7: 追加写入 daily-canonical.jsonl（参考 duanyu119/open-health-database）
-v8: RHR交叉验证(夜间raw HR最低值) + 日间心率-活动耦合指标"""
+v9: RHR交叉验证(夜间raw HR最低值) + 日间心率-活动耦合指标
+20260704: HRV 中位数改均值 + 离群过滤基准同步切换（用户反馈：V 型分布时均值更诚实）
+20260704: 步数合理性校验——孤立高值标记(frag_step_suspect) + 手表离线标记(steps_watch_off)
+20260704: 睡眠夜晚归属校验——强制sleepStart日期检查 + --expected-sleep-night CLI (exit 2 on mismatch)
+20260707: #21 非佩戴检测(non_wear_detected/wear_compliance) + #20 HRV口径标注(SDNN, 非RMSSD)"""
 import json, sys, statistics, os
 from datetime import datetime, timedelta
 
 data = json.load(open(sys.argv[1]))
 date = sys.argv[2]
+
+# v10: --expected-sleep-night 校验（方案①+⑧）
+# 用法: python3 health-extract.py file.json 2026-07-04 --expected-sleep-night 2026-07-03
+# 校验提取出的 sleepStart 是否属于预期夜晚，不匹配则标记 sleep_night_mismatch 并 exit 2
+expected_sleep_night = None
+for i, arg in enumerate(sys.argv):
+    if arg == '--expected-sleep-night' and i + 1 < len(sys.argv):
+        expected_sleep_night = sys.argv[i + 1]
+
 out = {}
 
 mm = {m['name']: m for m in data['data']['metrics']}
@@ -19,7 +32,7 @@ if 'resting_heart_rate' in mm:
     vals = [p['qty'] for p in mm['resting_heart_rate']['data'] if p.get('qty')]
     if vals:
         out['rhr'] = f"{statistics.median(vals):.0f}"
-# v8: RHR 交叉验证——当 RHR 只有单日汇总时，用夜间 raw heart_rate 最低值验证
+# v9: RHR 交叉验证——当 RHR 只有单日汇总时，用夜间 raw heart_rate 最低值验证
 # Apple Watch 的 resting_heart_rate 可能只有 1 条/天，raw heart_rate 有 24 条小时 Avg
 if 'heart_rate' in mm:
     hr_pts = [(int(p['date'].split()[1][:2]), p) for p in mm['heart_rate']['data']]
@@ -56,7 +69,39 @@ if 'heart_rate' in mm:
                     out['hr_activity_label'] = '弱耦合——可能疲劳或自主神经迟钝'
                 else:
                     out['hr_activity_label'] = '解耦——生理状态需关注'
-# Fallback: RHR 未同步时扫描附近几天（今天优先，昨天次之）
+    # #21: 非佩戴检测——清醒时段连续 >3h 无心率读数 = 手表离身
+    # HAE 心率是小时级，所以 >3h 缺失基本就是摘表（洗澡/充电/忘戴）
+    # 只对"已完成的一天"判定：分析日 < 今天，或分析日 == 今天但当前已过 22:00
+    _now = datetime.now()
+    _is_today_complete = (date == _now.strftime('%Y-%m-%d') and _now.hour >= 22) or (date < _now.strftime('%Y-%m-%d'))
+    if 'heart_rate' in mm and _is_today_complete:
+        hr_hours = sorted(set(int(p['date'].split()[1][:2]) for p in mm['heart_rate']['data']))
+        awake_hours = [h for h in range(8, 22)]  # 08:00-22:00 清醒时段
+        missing_awake = [h for h in awake_hours if h not in hr_hours]
+        if len(missing_awake) >= 6:  # 14h 清醒时段缺 6h+ = 严重非佩戴
+            out['non_wear_detected'] = 'true'
+            out['wear_compliance'] = f"{(14 - len(missing_awake)) / 14 * 100:.0f}"
+            # 连续缺失段
+            gaps = []
+            gap_start = None
+            for h in awake_hours:
+                if h in missing_awake:
+                    if gap_start is None: gap_start = h
+                else:
+                    if gap_start is not None:
+                        gaps.append(f"{gap_start:02d}-{h:02d}")
+                        gap_start = None
+            if gap_start is not None:
+                gaps.append(f"{gap_start:02d}-22")
+            if gaps:
+                out['non_wear_gaps'] = '; '.join(gaps[:3])
+
+# HRV 口径标注（#20 调整版）
+# Apple Watch HRV = SDNN（HKQuantityTypeIdentifierHeartRateVariabilitySDNN）
+# 不是 RMSSD。要切 RMSSD 需要从 RR 间期算，但 HAE 默认不导出 heartbeat series
+if 'heart_rate_variability' in mm:
+    out['hrv_metric_type'] = 'SDNN'  # 明确标注口径
+    out['hrv_metric_note'] = 'Apple Watch SDNN, 需 HAE heartbeat 导出后切 RMSSD'
 if 'rhr' not in out:
     base_dir = os.path.dirname(sys.argv[1])
     parent = os.path.dirname(base_dir)
@@ -79,14 +124,53 @@ if 'rhr' not in out:
 # HRV — 夜间窗口中位数（睡眠 HRV 是恢复评估的黄金标准）
 # 白天 HRV 受运动/说话/压力干扰，不能准确反映自主神经恢复状态
 # 与 Apple Health 显示的全天值口径不同，报告中标注为「睡眠 HRV」
+# v9: 增加样本数/范围 + 早晨恢复读数 + 标记小样本风险
+# v9.1: 改用均值替代中位数——用户反馈中位数在 V 型分布（如 [71,41,42,39,71]）
+#   会丢弃极值信息（中位数=42 vs 均值=53），均值更能反映整晚 HRV 的平均水平
 if 'heart_rate_variability' in mm:
     pts = [(int(p['date'].split()[1][:2]), p['qty']) for p in mm['heart_rate_variability']['data'] if p.get('qty')]
-    night = [v for h, v in pts if 0 <= h < 9]
-    pool = night if night else [v for _, v in pts]
+    night = [(h, v) for h, v in pts if 0 <= h < 9]
+    pool = [v for _, v in night] if night else [v for _, v in pts]
     if pool:
-        m = statistics.median(pool)
-        clean = [v for v in pool if v <= m * 2] or pool
-        out['hrv'] = f"{statistics.median(clean):.0f}"
+        # 排除 >2 倍均值的极端离群值（如单次 135 拉偏 6 次采样的均值）
+        avg = sum(pool) / len(pool)
+        clean = [v for v in pool if v <= avg * 2] or pool
+        out['hrv'] = f"{sum(clean) / len(clean):.0f}"
+        out['hrv_n'] = str(len(pool))
+        out['hrv_range'] = f"{min(pool):.0f}-{max(pool):.0f}"
+        if len(pool) < 3:  # Apple Watch 夜间正常 4-6 次，<3 才算稀疏 (20260705 修正: 原阈值 5 太激进)
+            out['hrv_sparse'] = 'true'  # 小样本警告
+        # 早晨恢复读数：取 6-9 点最后一个读数，反映醒来时的 HRV 恢复状态
+        morning = sorted([(h, v) for h, v in night if 6 <= h < 9], key=lambda x: x[0])
+        if morning:
+            out['hrv_morning'] = f"{morning[-1][1]:.0f}"
+
+# v9: 7 日滚动 HRV 均值——从 daily-canonical.jsonl 读最近 7 天，避免单夜采样误导
+canonical_file_hrv = os.path.expanduser("~/.life-log/daily-canonical.jsonl")
+try:
+    hrv_7d = []
+    target_dt = datetime.strptime(date, '%Y-%m-%d')
+    if os.path.exists(canonical_file_hrv):
+        with open(canonical_file_hrv) as cf:
+            for line in cf:
+                line = line.strip()
+                if not line: continue
+                try:
+                    rec = json.loads(line)
+                    d = rec.get('date', '')
+                    if d and 'hrv' in rec:
+                        dd = datetime.strptime(d, '%Y-%m-%d')
+                        if (target_dt - dd).days >= 1 and (target_dt - dd).days <= 7:
+                            hrv_7d.append(float(rec['hrv']))
+                except: pass
+    # 加上当日自己的 HRV
+    if 'hrv' in out:
+        hrv_7d.append(float(out['hrv']))
+    if len(hrv_7d) >= 3:
+        out['hrv_7d_avg'] = f"{sum(hrv_7d)/len(hrv_7d):.0f}"
+        out['hrv_7d_n'] = str(len(hrv_7d))
+except Exception:
+    pass  # 静默失败
 
 # Steps — 日总和（HAE 按小时分条，需汇总）
 # v6: 碎步指标升级为 bout 检测——合并相邻活跃小时识别步行段落
@@ -97,6 +181,20 @@ if 'step_count' in mm:
     if total_steps > 0:
         out['steps'] = f"{total_steps:.0f}"
     hourly = [p.get('qty', 0) or 0 for p in mm['step_count']['data']]
+
+    # 20260704: 步数合理性校验——段誉式显式标记，不静默丢弃
+    # (1) 单小时 >3000 步且相邻小时均为 0 → 疑似误计（手机放桌上/手表晃动）
+    for i, s in enumerate(hourly):
+        if s > 3000:
+            prev_zero = i == 0 or hourly[i-1] == 0
+            next_zero = i >= len(hourly)-1 or hourly[i+1] == 0
+            if prev_zero and next_zero:
+                out['frag_step_suspect'] = 'true'
+                out['frag_step_suspect_hour'] = str(i)
+                break
+    # (2) 日总和 <100 步 → 手表未佩戴日
+    if total_steps < 100:
+        out['steps_watch_off'] = 'true'
 
     # ── bout 检测（小时级） ──
     # 连续活跃小时（步数>0）合并为一个 bout
@@ -196,6 +294,25 @@ if 'sleep_analysis' in mm:
             out['sleep_end'] = sleep_end
             break
 
+# 20260704: 睡眠夜晚归属校验（方案①+⑧）
+# Apple Watch 的 sleepStart 记录入睡时刻。HAE 文件 date=N 中的睡眠是 N-1→N 夜。
+# 校验 sleepStart 是否落在预期夜晚窗口 [expected_night 18:00, expected_night+1 12:00]。
+if 'sleep_start' in out:
+    try:
+        ss = datetime.strptime(out['sleep_start'][:19], '%Y-%m-%d %H:%M:%S')
+        if expected_sleep_night:
+            expected_night = datetime.strptime(expected_sleep_night, '%Y-%m-%d')
+        else:
+            expected_night = datetime.strptime(date, '%Y-%m-%d') - timedelta(days=1)
+        window_start = expected_night.replace(hour=18, minute=0, second=0)
+        window_end = (expected_night + timedelta(days=1)).replace(hour=12, minute=0, second=0)
+        if not (window_start <= ss <= window_end):
+            out['sleep_night_mismatch'] = 'true'
+            out['sleep_night_expected'] = f"{expected_night.strftime('%Y-%m-%d')} 18:00 → {(expected_night + timedelta(days=1)).strftime('%Y-%m-%d')} 12:00"
+            out['sleep_night_actual'] = f"{ss.strftime('%Y-%m-%d %H:%M')}"
+    except (ValueError, IndexError):
+        pass
+
 # Active energy — 日总和（HAE 按小时分条，需汇总）
 if 'active_energy' in mm:
     total_ae = sum(p.get('qty', 0) or 0 for p in mm['active_energy']['data'])
@@ -224,7 +341,7 @@ if 'walking_heart_rate_average' in mm:
         out['walk_hr'] = f"{sum(pts)/len(pts):.0f}"
 
 # VO2Max (from 6-year CSV — most complete source, not in daily JSON)
-vo2_csv = "<YOUR_VO2MAX_CSV_PATH>"
+vo2_csv = "/Users/nixon/.proma/agent-workspaces/default/be7433aa-7436-452b-9968-85888bc144b3/health_export_big/HealthAutoExport-2020-05-27-2026-06-03.csv"
 if os.path.exists(vo2_csv):
     try:
         with open(vo2_csv) as vf:
@@ -274,3 +391,14 @@ except Exception:
     pass  # 静默失败，不影响主流程
 
 print(json.dumps(out))
+
+# v10: 方案⑧——若显式指定了 --expected-sleep-night 且不匹配，exit 2
+# 调用方（如自动化脚本）可据此决定：降级生成 / 延迟重试 / 仅分析白天活动
+if out.get('sleep_night_mismatch') == 'true' and expected_sleep_night:
+    mismatch_msg = (
+        f"SLEEP_NIGHT_MISMATCH: expected {expected_sleep_night}→"
+        f"{(datetime.strptime(expected_sleep_night, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')}, "
+        f"got sleepStart {out.get('sleep_night_actual', '?')}"
+    )
+    print(mismatch_msg, file=sys.stderr)
+    sys.exit(2)
