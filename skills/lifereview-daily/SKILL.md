@@ -1,6 +1,6 @@
 ---
 name: lifereview-daily
-version: 4.4.0
+version: 4.5.0
 description: "Nixon 每日生命回顾——裁决/叙事/新视角/碎步指数/心率-活动耦合。不负责：周报(用weekly skill)、营养咨询(用ask-guzhongyi)、体检报告解读(单独处理)。"
 metadata:
   requires:
@@ -51,6 +51,12 @@ metadata:
 ### 飞书日历（仅已接受）
 三层漏斗：① accept ② 自己是组织者 ③ 航班/高铁/→箭头。排除系统日程和提醒型。
 API 失败时保留已有数据，不覆盖。
+
+**日历解读铁律（2026-07-05）**：
+- Nixon 的日历不只有会议——还包括训练、打扫、吃饭、出行、购物等个人生活安排
+- **日历空白 ≠ 空日子**。周末可能有深度工作块，工作日可能有全天外出
+- 个人备注型日程（"砍重量""写材料""准备""打扫"）是合法日程，不是冗余
+- **accepted < 2 条时禁止写"零场会"**。改为"周日，今日日程较轻松"，并主动拉 Looki 补充
 
 ### REST 接收器（可选）
 `rest-receiver.py --port 8765` 接收 HAE App POST，绕开 iCloud 7h+ 延迟。详见 `references/data-pipeline.md`
@@ -155,6 +161,12 @@ F.社交/连接：`social_connection`
 | 因果探索 | 23:17 | launchd → `causal-explorer.py` |
 | AI 周报 | 周日 11:00 | Proma automation |
 
+## Bot 与群聊（2026-07-04 迁移）
+
+- **唯一沟通 Bot**: `cli_aac21c9397799bdf`（lark-cli profile: `cli_aac21c9397799bdf`）
+- **主群**: `oc_42eff3f4c6d4297bf9a04772e92d53ca`（Proma - Looki）
+- 所有自动化推送到此群，旧 Bot `cli_a93f9c734d61dcd5` 已废弃
+- Nixon 在新 Bot 下的 open_id: `ou_e236f3599d28aae4a18d8df04fc93d4a`
 
 ## 晨间报告模板（v4.3）
 
