@@ -1,0 +1,29 @@
+# ═══ 凭据/机密——绝不进 git ═══
+*.credentials.json
+.proma-credentials.json
+secrets/
+*.token
+*.env
+
+# ═══ 运行时缓存/临时 ═══
+__pycache__/
+*.py[cod]
+*.pyo
+.DS_Store
+._*
+
+# ═══ 日志 ═══
+*.log
+
+# ═══ 备份文件 ═══
+*.bak
+*.bak-*
+
+# ═══ DB 二进制 + 副本（用 health-dump.sql 文本代替）═══
+db/health.db
+db/backups/
+
+# ═══ tmp 运行时缓存（脚本中间产物，非源码）═══
+tmp/looki.json
+tmp/cal.json
+tmp/notify-data.json
