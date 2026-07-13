@@ -52,6 +52,20 @@ if $SCAN_CMD 'app_secret|APP_SECRET' . 2>/dev/null | grep -qv 'YOUR_'; then
   FOUND=1
 fi
 
+# 6. 飞书 Bot app_id (cli_*)
+if $SCAN_CMD 'cli_[a-f0-9]{16}' . 2>/dev/null | grep -qv 'YOUR_'; then
+  echo "❌ 发现飞书 Bot app_id (cli_*)"
+  $SCAN_CMD 'cli_[a-f0-9]{16}' . 2>/dev/null | grep -v 'YOUR_'
+  FOUND=1
+fi
+
+# 7. 飞书群聊 chat_id (oc_*)
+if $SCAN_CMD 'oc_[a-z0-9]{30,}' . 2>/dev/null | grep -qv 'YOUR_'; then
+  echo "❌ 发现飞书群聊 chat_id (oc_*)"
+  $SCAN_CMD 'oc_[a-z0-9]{30,}' . 2>/dev/null | grep -v 'YOUR_'
+  FOUND=1
+fi
+
 if [ "$FOUND" -eq 1 ]; then
   echo ""
   echo "⚠️  提交已阻止。请将敏感信息替换为 <YOUR_*> 占位符后重试。"

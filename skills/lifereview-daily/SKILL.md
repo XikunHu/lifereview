@@ -72,6 +72,7 @@ API 失败时保留已有数据，不覆盖。
 | `daily-narrative.py` | — | 16视角轮换叙事引擎 |
 | `looki-x-parser.py` | **v1** | 从 Looki moments 自动提取 X 事件（服药/饮酒/咖啡等）→ x-events.jsonl |
 | `rest-receiver.py` | — | HAE REST 接收器（可选，绕开 iCloud 延迟） |
+| `fetch-environment.py` | **#34** | 拉取昨晚环境空气质量（PM2.5/PM10/O3/NO2），基于 Looki 过夜地 + Open-Meteo → daily-canonical.jsonl |
 
 ## 健康基线
 
@@ -164,26 +165,40 @@ F.社交/连接：`social_connection`
 | 因果探索 | 23:17 | launchd → `causal-explorer.py` |
 | AI 周报 | 周日 11:00 | Proma automation |
 
-## Bot 与群聊（2026-07-04 迁移）
+## Bot 与群聊（替换为你自己的）
 
-- **唯一沟通 Bot**: `cli_aac21c9397799bdf`（lark-cli profile: `cli_aac21c9397799bdf`）
-- **主群**: `oc_42eff3f4c6d4297bf9a04772e92d53ca`（Proma - Looki）
-- 所有自动化推送到此群，旧 Bot `cli_a93f9c734d61dcd5` 已废弃
-- Nixon 在新 Bot 下的 open_id: `ou_e236f3599d28aae4a18d8df04fc93d4a`
+- **唯一沟通 Bot**: `<YOUR_LARK_BOT_ID>`（lark-cli profile 同名）
+- **主群**: `<YOUR_FEISHU_CHAT_ID>`
+- 所有自动化推送到此群
+- 你的 open_id: `<YOUR_FEISHU_OPEN_ID>`
 
-## 晨间报告模板（v4.3）
+## 晨间报告模板（v4.4 · #34 环境数据）
 
 1. **数据审计** — `HAE ✅ | Looki ✅10段 | Realtime ✅ | 日历 ✅`
+   - 环境异常时追加：`🌫️ PM2.5 XXμg/m³（偏高）| 📍 过夜地变更`（全部正常则不显示）
 2. **一句话裁决** — 🔴/🟡/🟢 + 核心判断
 3. **Looki 叙事** — 时间线 + 场景 + 原型聚类
 4. **生理基线** — RHR/HRV/睡眠/深睡 + 7d偏差
 5. **步数+碎步** — `步数 XXXX | X bout | 指数 XX (A-E) | 步速 X.X | 步长 XX`
 6. **证伪推理** — 「先别怪 X，更像 Y」
 7. **今日预判+决策**
-8. **每日新视角** — 15视角轮换
+8. **每日新视角** — 16视角轮换
 9. **状态信号** — 🆘🍬😴
 
 底部：`有偏差就告诉我。精力X 专注X 压力X，我来调整。`
+
+### 环境数据展示规则（#34 新增 · 异常才显示）
+
+数据来源：`daily-canonical.jsonl` 中当天 `environment` 字段。**只在异常时显示，全部正常则静默。**
+
+| 异常条件 | 阈值 | 显示格式 |
+|---------|------|---------|
+| PM2.5 偏高 | `pm25_flag` = moderate 或 unhealthy | `🌫️ 昨晚 PM2.5 {avg}μg/m³（偏高，峰值 {max}），敏感人群减少户外` |
+| O3 偏高 | `o3_avg` > 100 | `🌫️ 昨晚 O3 {avg}μg/m³（偏高），午后注意臭氧` |
+| 位置变化 | `location_changed` = true | `📍 过夜地变更：{city_label}` |
+| 拉取失败 | `fetch_status` ≠ "ok" | `⚠️ 环境数据拉取失败` |
+
+静默条件：pm25_flag=good 且 o3_avg ≤ 100 且 location_changed=false 且 fetch_status=ok。
 
 ## 关键规范
 
@@ -195,3 +210,4 @@ F.社交/连接：`social_connection`
 - **RHR 偏离必须对照因果规律库**：输出最匹配的解释类型（酒精/出行/睡眠剥夺/运动恢复等）
 - **awake_to_work_gap 为必算指标**：每次分析必须计算并纳入精力评估
 - **Looki 缺失必须显式标注**：无数据时写「Looki 无数据，🆘🍬😴 信号无法提取」，不能沉默跳过
+- **环境数据异常才显示（#34）**：从 `daily-canonical.jsonl` 读 `environment` 字段。PM2.5 moderate+/O3>100/位置变更/拉取失败 时在数据审计行追加环境信息；全部正常则不显示
