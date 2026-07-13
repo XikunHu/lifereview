@@ -998,7 +998,7 @@ def gen_perspective(pick, rhr, hrv, steps, sleep_total, sleep_deep, sleep_rem, m
 
     if pick == 'rhr_recovery':
 
-        return f"💡 **昨日新视角：心率 47 的秘密**\n你的静息心率基线是 47-50，来自6年1155次训练的运动员心脏。RHR<47=深度恢复，47-50=良好，>53=身体在扛东西。当天 RHR {rhr if rhr else '?'}，处于什么区间？这个数字比任何精力自评都诚实。明天早上看一眼——如果突然跳到53以上，问问自己昨晚发生了什么。"
+        return f"💡 **昨日新视角：静息心率的秘密**\n你的静息心率基线（RHR）是长期训练塑造的运动员心脏。低于基线=深度恢复，接近基线=良好，高于基线+3=身体在扛东西。当天 RHR {rhr if rhr else '?'}，处于什么区间？这个数字比任何精力自评都诚实。明天早上看一眼——如果突然跳到基线+5 以上，问问自己昨晚发生了什么。"
 
     if pick == 'load_recovery_balance':
 
@@ -1110,7 +1110,7 @@ def gen_perspective(pick, rhr, hrv, steps, sleep_total, sleep_deep, sleep_rem, m
 
             f"天平: {tilt}\n\n"
 
-            f"颈动脉斑块是慢性透支>存钱的产物。运动员心脏让你高负荷日心率反而低——但心率平静不意味血管平静。{eve_note}"
+            f"血管风险是慢性透支>存钱的产物。运动员心脏让你高负荷日心率反而低——但心率平静不意味血管平静。{eve_note}"
 
         )
 
@@ -1461,7 +1461,7 @@ def gen_perspective(pick, rhr, hrv, steps, sleep_total, sleep_deep, sleep_rem, m
                         for yr in sorted(by_year.keys()):
                             avg = sum(by_year[yr])/len(by_year[yr])
                             journey.append(f"{yr}:{avg:.0f}")
-                        lines.append(f"\\n6年轨迹: {' → '.join(journey)}")
+                        lines.append(f"\\n长期轨迹: {' → '.join(journey)}")
                         
                         if len(recent) >= 3 and recent[-1][1] < recent[0][1]:
                             lines.append(f"\\n⚠️ 最近3个月 VO2Max 在下降——心肺适能是健康的长期底盘。检查: 有氧运动频率是否下降？户外跑步是否减少了？")
@@ -1508,7 +1508,7 @@ def gen_perspective(pick, rhr, hrv, steps, sleep_total, sleep_deep, sleep_rem, m
             
             lines.append(f"最近30天: {w_count}次运动, 约{freq_per_wk:.1f}次/周, 总{w_hrs}h")
             lines.append(f"类型: {', '.join(w_types[:5])}")
-            lines.append(f"\\n你6年月均15-20次、周均3-4次是健康底线。当前{freq_per_wk:.1f}次/周")
+            lines.append(f"\\n长期健康底线参考：周均3-4次运动。当前{freq_per_wk:.1f}次/周")
 
             if freq_per_wk < 3:
                 lines.append(f"⚠️ 低于底线3次/周——运动量下降直接关联代谢恶化(2025年脂肪肝教训)")
