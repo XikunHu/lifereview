@@ -28,7 +28,7 @@ metadata:
 ### 聚合规则 ⚠️
 | 方式 | 指标 |
 |------|------|
-| **sum()** | steps, active_energy, distance, flights, exercise_time, stand_hour |
+| **sum()** | steps, active_energy, distance, flights, exercise_time, stand_hour, daylight_min |
 | **median()** | rhr, hrv, respiratory_rate, walking_hr, heart_rate, blood_o2 |
 | **first** | sleep_analysis, vo2_max |
 
@@ -71,7 +71,7 @@ API 失败时保留已有数据，不覆盖。
 | `score.py` | — | 精力+压力评分 |
 | `daily-narrative.py` | — | 16视角轮换叙事引擎 |
 | `looki-x-parser.py` | **v1** | 从 Looki moments 自动提取 X 事件（服药/饮酒/咖啡等）→ x-events.jsonl |
-| `rest-receiver.py` | — | HAE REST 接收器（可选，绕开 iCloud 延迟） |
+| `daylight-analysis.py` | **v1** | 日照×入睡 n-of-1 分析（20260718, #42）。单日/多日模式，读 canonical.daylight_min |
 | `fetch-environment.py` | **#34** | 拉取昨晚环境空气质量（PM2.5/PM10/O3/NO2），基于 Looki 过夜地 + Open-Meteo → daily-canonical.jsonl |
 
 ## 健康基线
@@ -99,6 +99,29 @@ API 失败时保留已有数据，不覆盖。
 - 🟡 运动日精力反而更低（恢复没跟上）
 - 🟡 代谢综合征风险（内脏脂肪 + 血管指标，腰臀比/CT 自查）
 - 🟡 出行日 ≈ 酒精日的生理代价（航班/高铁+日程密度+睡眠剥夺 → RHR +5~+6，与酒精同级的高交感负荷）
+- 🟡 入睡晚是"睡得晚"不是"睡不着"（2026-07-18 Looki 印证）：入睡≥1:00 的日子，睡前 2-3h 都有高强度脑力活动（技术研讨会/播客录制/行车办公/差旅夜航）。入睡时间 vs 睡眠时长 r=-0.62（晚睡直接吃时长），但 vs HRV r=0.03（不直接拉低质量）。主因是睡前大脑激活，日照不足是相位叠加因素
+
+## 观察规则：日照×入睡晚（20260718, #42）
+
+**触发条件**（晨报自动检查，满足≥2 条即提醒用户）：
+1. 当日 `daylight_min` < 20（日照严重不足，历史 P25 以下）
+2. 当晚 `sleep_start` ≥ 01:00（入睡晚，P75 以上）
+3. Looki moments 显示 22:00 后仍有工作/会议/录制场景（睡前高强度脑力）
+
+**提醒话术**：
+- 日照低 + 入睡晚：「☀️ 昨日日照仅 Xmin（P-Y），当晚入睡 X:XX。日照不足推迟昼夜相位，建议今天上午出门走 15 分钟补晨光」
+- 叠加睡前脑力活动：「⚠️ 22 点后仍在 [技术讨论/播客录制/行车办公]，大脑激活推迟入睡。建议今晚 23 点前停止高强度脑力」
+
+**数据来源**：
+- `daylight_min`：canonical.daylight_min（health-extract.py v10+ 从 HAE `time_in_daylight` 提取）
+- `sleep_start`：canonical.sleep_start
+- 睡前活动：Looki moments 22:00-02:00 段
+
+**分析脚本**：`daylight-analysis.py YYYY-MM-DD`（单日）或无参数（多日关联）
+
+**配对铁律**：canonical 的 sleep_start 按"醒来日归属"，`canon[D].sleep_start` 是 D 凌晨的入睡（即 D-1 晚的睡眠）。分析"D 日照 → D 晚入睡"必须配对 `canon[D].daylight_min` ↔ `canon[D+1].sleep_start`，同天配对会算出假信号。
+
+**当前局限**：HAE 只导出日照日总量，无晨光时段（6-10 点）分布。晨光时段需后续从 Apple Health 原始 XML 补。n-of-1 结论需累积 ≥30 天。
 
 ## HRV 数据口径（v4.5 · 2026-07-02 事故教训）
 
@@ -179,11 +202,12 @@ F.社交/连接：`social_connection`
 2. **一句话裁决** — 🔴/🟡/🟢 + 核心判断
 3. **Looki 叙事** — 时间线 + 场景 + 原型聚类
 4. **生理基线** — RHR/HRV/睡眠/深睡 + 7d偏差
-5. **步数+碎步** — `步数 XXXX | X bout | 指数 XX (A-E) | 步速 X.X | 步长 XX`
-6. **证伪推理** — 「先别怪 X，更像 Y」
-7. **今日预判+决策**
-8. **每日新视角** — 16视角轮换
-9. **状态信号** — 🆘🍬😴
+5. **日照×入睡观察** — 调用 `daylight-analysis.py <昨天>`，若触发规则（日照<20min + 入睡≥01:00）输出补晨光/停止睡前脑力提醒；未触发则一行带过
+6. **步数+碎步** — `步数 XXXX | X bout | 指数 XX (A-E) | 步速 X.X | 步长 XX`
+7. **证伪推理** — 「先别怪 X，更像 Y」
+8. **今日预判+决策**
+9. **每日新视角** — 16视角轮换
+10. **状态信号** — 🆘🍬😴
 
 底部：`有偏差就告诉我。精力X 专注X 压力X，我来调整。`
 

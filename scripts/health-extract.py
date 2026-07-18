@@ -325,6 +325,14 @@ if 'vo2_max' in mm:
     if pts:
         out['vo2max'] = f"{pts[-1]:.1f}"
 
+# Time in Daylight (20260718, #42) — Apple Watch 环境光传感器，watchOS 10+
+# HAE 导出为日总量(分钟)，可能多 source 条目，sum 汇总。
+# 用于"日照×入睡晚"观察规则（见 lifereview-daily SKILL.md）。
+if 'time_in_daylight' in mm:
+    total_dl = sum(p.get('qty', 0) or 0 for p in mm['time_in_daylight']['data'])
+    if total_dl > 0:
+        out['daylight_min'] = f"{total_dl:.0f}"
+
 # Respiratory rate (nighttime) — sleep quality indicator
 if 'respiratory_rate' in mm:
     pts = [(int(p['date'].split()[1][:2]), p['qty']) for p in mm['respiratory_rate']['data'] if p.get('qty')]
