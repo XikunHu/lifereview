@@ -230,6 +230,30 @@ if hae_today:
         msg += f"| 呼吸 | {hae_today['resp']}/min | — | — |\n"
     msg += "\n"
 
+# 日照×入睡观察（#42, 20260718）— 完整触发逻辑见 daylight-analysis.py + SKILL.md「观察规则：日照×入睡晚」
+def _daylight_from_canon(date):
+    fn = os.path.expanduser("~/.life-log/daily-canonical.jsonl")
+    if not os.path.exists(fn): return None
+    try:
+        for line in open(fn):
+            line = line.strip()
+            if not line: continue
+            o = json.loads(line)
+            if o.get('date') == date:
+                v = o.get('daylight_min')
+                return float(v) if v else None
+    except Exception:
+        pass
+    return None
+
+_dl = _daylight_from_canon(yesterday)
+if _dl is not None:
+    msg += "### ☀️ 日照×入睡观察\n\n"
+    msg += f"昨日日照 **{_dl:.0f}min**"
+    if _dl < 20:
+        msg += " ⚠️ 偏低，建议今天上午出门走 15 分钟补晨光"
+    msg += "\n\n"
+
 # 日程
 if cal_today:
     total_h = sum(e['dur'] for e in cal_today) / 60
