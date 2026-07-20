@@ -1,6 +1,6 @@
 ---
 name: lifereview-daily
-version: 4.6.0
+version: 4.7.0
 description: "每日生命回顾——裁决/叙事/新视角/碎步指数/心率-活动耦合/awake_to_work_gap。不负责：周报(用weekly skill)、营养咨询(用ask-guzhongyi)、体检报告解读(单独处理)。"
 metadata:
   requires:
@@ -71,8 +71,9 @@ API 失败时保留已有数据，不覆盖。
 | `score.py` | — | 精力+压力评分 |
 | `daily-narrative.py` | — | 16视角轮换叙事引擎 |
 | `looki-x-parser.py` | **v1** | 从 Looki moments 自动提取 X 事件（服药/饮酒/咖啡等）→ x-events.jsonl |
-| `daylight-analysis.py` | **v1** | 日照×入睡 n-of-1 分析（20260718, #42）。单日/多日模式，读 canonical.daylight_min |
+| `rest-receiver.py` | — | HAE REST 接收器（可选，绕开 iCloud 延迟） |
 | `fetch-environment.py` | **#34** | 拉取昨晚环境空气质量（PM2.5/PM10/O3/NO2），基于 Looki 过夜地 + Open-Meteo → daily-canonical.jsonl |
+| `daylight-analysis.py` | **v1** | 日照×入睡 n-of-1 分析（20260718, #42）。单日/多日模式，读 canonical.daylight_min |
 
 ## 健康基线
 
@@ -195,7 +196,7 @@ F.社交/连接：`social_connection`
 - 所有自动化推送到此群
 - 你的 open_id: `<YOUR_FEISHU_OPEN_ID>`
 
-## 晨间报告模板（v4.4 · #34 环境数据）
+## 晨间报告模板（v4.5 · #34 环境数据 + #42 日照×入睡）
 
 1. **数据审计** — `HAE ✅ | Looki ✅10段 | Realtime ✅ | 日历 ✅`
    - 环境异常时追加：`🌫️ PM2.5 XXμg/m³（偏高）| 📍 过夜地变更`（全部正常则不显示）
