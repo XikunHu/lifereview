@@ -23,15 +23,19 @@ def glucose_path(day: str) -> Path:
 
 def decode_hae(path: Path) -> dict:
     raw = path.read_bytes()
-    if raw.startswith(b"bvx-5"):
-        return json.loads(raw)
-    result = subprocess.run(
-        ["/usr/bin/compression_tool", "-decode", "-a", "lzfse", "-i", str(path)],
-        capture_output=True,
-        timeout=20,
-        check=True,
-    )
-    return json.loads(result.stdout)
+    # bvx-5 and bvx2 are both Apple LZFSE compression magic bytes.
+    # Empty placeholder files (65 bytes during sensor outage) and data files
+    # all use LZFSE — unify on compression_tool for all bvx variants.
+    if raw.startswith(b"bvx-5") or raw.startswith(b"bvx2"):
+        result = subprocess.run(
+            ["/usr/bin/compression_tool", "-decode", "-a", "lzfse", "-i", str(path)],
+            capture_output=True,
+            timeout=20,
+            check=True,
+        )
+        return json.loads(result.stdout)
+    # Non-compressed file (bare JSON fallback)
+    return json.loads(raw)
 
 
 def read_samples(day: str) -> list[tuple[datetime, float]]:
