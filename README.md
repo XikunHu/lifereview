@@ -50,7 +50,13 @@ chmod +x ~/.life-log/tmp/*.sh
 # 放好 Skill 文件（Proma 用户）
 cp skills/lifereview-daily/SKILL.md ~/.proma/agent-workspaces/default/skills/lifereview-daily/SKILL.md
 cp skills/lifereview-weekly/SKILL.md ~/.proma/agent-workspaces/default/skills/lifereview-weekly/SKILL.md
+cp skills/lifereview-trajectory-map/SKILL.md ~/.proma/agent-workspaces/default/skills/lifereview-trajectory-map/SKILL.md
+# 轨迹 skill 的批量生成脚本（可选，需 DeepSeek API）
+mkdir -p ~/.proma/agent-workspaces/default/skills/lifereview-trajectory-map/scripts
+cp skills/lifereview-trajectory-map/scripts/* ~/.proma/agent-workspaces/default/skills/lifereview-trajectory-map/scripts/
 ```
+
+> **lifereview-trajectory-map** 是「生命轨迹」生成 skill（2026-08-08 起）：把一天的行为×身体读成时间轴，每个节点必须有真实行为锚点 + 同窗身体回应，解释性数字必须带个人基线或对比坐标，末尾给两句跨维度洞察。支持一次生成多个真正不同的版本；`references/aug04-input.json` 是脱敏示例输入，`evals/` 是评测样例。
 
 ### 3. 替换占位符
 

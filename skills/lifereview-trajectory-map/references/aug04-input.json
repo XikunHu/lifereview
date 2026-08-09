@@ -1,0 +1,64 @@
+{
+  "date": "2026-08-04",
+  "timezone": "Asia/Shanghai",
+  "sleep_before_day": {
+    "start": "2026-08-04 01:15",
+    "end": "2026-08-04 08:08",
+    "total_hours": 6.8,
+    "core_hours": 4.47,
+    "deep_hours": 0.43,
+    "rem_hours": 1.88,
+    "sleep_hr_avg": 51.6,
+    "hrv_night_avg_ms": 60,
+    "hrv_morning_ms": 41,
+    "spo2_range_pct": [94, 97],
+    "respiratory_rate": 16.4
+  },
+  "sleep_after_day": {
+    "start": "2026-08-05 03:15",
+    "total_hours": 5.8
+  },
+  "day_totals": {
+    "steps": 4991,
+    "active_energy_kcal": 407,
+    "exercise_minutes": 37,
+    "stand_minutes": 73,
+    "daylight_minutes": 20,
+    "glucose_avg": 5.86,
+    "glucose_cv_pct": 8.6,
+    "glucose_range": [5.01, 7.03],
+    "rhr": 52
+  },
+  "hourly": [
+    {"hour": 8, "events": ["起床"], "hr_avg": 55, "hr_max": 80, "hrv": 41, "steps": 341, "glucose": 5.43, "daylight_min": 3.3},
+    {"hour": 9, "events": ["训练-力量训练课"], "hr_avg": 100, "hr_max": 142, "steps": 1414, "active_kcal": 176, "exercise_min": 32, "glucose": 5.16, "daylight_min": 10.7},
+    {"hour": 10, "events": ["预留-关键场景", "用户研究"], "hr_avg": 74, "hr_max": 113, "hrv": 48, "steps": 53, "glucose": 5.45},
+    {"hour": 11, "events": ["技术方案讨论"], "hr_avg": 69, "hr_max": 96, "steps": 715, "glucose": 5.01},
+    {"hour": 12, "events": ["用户研究", "团队对齐"], "hr_avg": 71, "hr_max": 94, "hrv": 45, "steps": 333, "glucose": 5.61},
+    {"hour": 13, "events": ["内部调研", "吃饭", "医院", "聊聊", "产品讨论会"], "hr_avg": 71, "hr_max": 111, "steps": 478, "glucose": 5.57, "daylight_min": 6},
+    {"hour": 14, "events": ["交流"], "hr_avg": 63, "hr_max": 77, "hrv": 40, "steps": 58, "glucose": 5.74},
+    {"hour": 15, "events": ["用户研究", "技术交流"], "hr_avg": 62, "hr_max": 74, "steps": 175, "glucose": 6.02},
+    {"hour": 16, "events": ["文档撰写", "产品讨论"], "hr_avg": 58, "hr_max": 79, "steps": 272, "glucose": 5.42},
+    {"hour": 17, "events": ["文档"], "hr_avg": 51, "hr_max": 56, "steps": 137, "glucose": 5.47},
+    {"hour": 18, "events": ["走动讨论"], "hr_avg": 64, "hr_max": 76, "hrv": 113, "steps": 580, "glucose": 5.90},
+    {"hour": 19, "events": ["海外项目沟通", "用户研究"], "hr_avg": 60, "hr_max": 78, "hrv": 58, "steps": 296, "glucose": 7.03, "mindful_min": 10},
+    {"hour": 20, "events": ["场景讨论"], "hr_avg": 60, "hr_max": 74, "hrv": 68, "steps": 25, "glucose": 6.99},
+    {"hour": 21, "events": ["技术讨论", "行动细节"], "hr_avg": 62, "hr_max": 77, "steps": 10, "glucose": 6.48},
+    {"hour": 22, "events": ["日程结束"], "hr_avg": 58, "hr_max": 75, "hrv": 61, "steps": 4, "glucose": 6.32, "environment_db": 60},
+    {"hour": 23, "events": [], "hr_avg": 59, "hr_max": 67, "steps": 4, "glucose": 6.46, "environment_db": 48}
+  ],
+  "calendar_summary": {
+    "event_count": 19,
+    "occupied_hours": 13,
+    "span": "09:00-22:00",
+    "longest_continuous_hours": 8.5,
+    "peak_period": "12:00-15:00",
+    "peak_event_count": 7
+  },
+  "data_boundaries": [
+    "No Looki behavior data",
+    "No confirmed meal timestamps except calendar item 吃饭 at 13:00",
+    "HRV 113 at 18:00 is one sample",
+    "No behavior records after 23:00; do not invent reasons for 03:15 sleep"
+  ]
+}

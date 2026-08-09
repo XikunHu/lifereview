@@ -349,7 +349,7 @@ if 'walking_heart_rate_average' in mm:
         out['walk_hr'] = f"{sum(pts)/len(pts):.0f}"
 
 # VO2Max (from 6-year CSV — most complete source, not in daily JSON)
-vo2_csv = "/Users/nixon/.proma/agent-workspaces/default/be7433aa-7436-452b-9968-85888bc144b3/health_export_big/HealthAutoExport-2020-05-27-2026-06-03.csv"
+vo2_csv = os.environ.get("VO2_CSV_PATH", "")  # 6 年健康导出 CSV 路径，通过环境变量配置
 if os.path.exists(vo2_csv):
     try:
         with open(vo2_csv) as vf:

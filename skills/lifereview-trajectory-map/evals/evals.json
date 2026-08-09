@@ -1,0 +1,11 @@
+{
+  "skill_name": "lifereview-trajectory-map-20260808",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "使用 lifereview-trajectory-map-20260808 Skill，根据 references/aug04-input.json 生成10个不同版本。每版必须是手机极简轨迹，并在末尾给恰好两句多维行为×身体洞察。",
+      "expected_output": "10个真正不同的极简轨迹版本；每节点最多3项指标；每版两句洞察；不编造行为、不强因果。",
+      "files": ["references/aug04-input.json"]
+    }
+  ]
+}
