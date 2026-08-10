@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""health-extract.py 20260707 — 从 HAE 自动化 JSON 提取指定日期的生理指标
+"""health-extract.py v10 20260728 — 从 HAE 自动化 JSON 提取指定日期的生理指标
 v4: 修复步数/活跃能量按小时汇总、Walking HR 改用均值
 v5: 新增碎步比（hourly阈值版）
 v6: 碎步升级为 bout 检测（参考 JeffenCheung/personal-health-dashboard）
 v7: 追加写入 daily-canonical.jsonl（参考 duanyu119/open-health-database）
 v9: RHR交叉验证(夜间raw HR最低值) + 日间心率-活动耦合指标
+v10: 睡眠来源优先级排序(Apple Watch > Oura > 其他) + sleep_rem_unreliable标记
 20260704: HRV 中位数改均值 + 离群过滤基准同步切换（用户反馈：V 型分布时均值更诚实）
 20260704: 步数合理性校验——孤立高值标记(frag_step_suspect) + 手表离线标记(steps_watch_off)
 20260704: 睡眠夜晚归属校验——强制sleepStart日期检查 + --expected-sleep-night CLI (exit 2 on mismatch)
-20260707: #21 非佩戴检测(non_wear_detected/wear_compliance) + #20 HRV口径标注(SDNN, 非RMSSD)"""
+20260707: #21 非佩戴检测(non_wear_detected/wear_compliance) + #20 HRV口径标注(SDNN, 非RMSSD)
+20260709: CGM血糖提取(欧态) — 空腹均值/餐后峰值/CV波动系数/日内min-max"""
 import json, sys, statistics, os
 from datetime import datetime, timedelta
 
@@ -271,18 +273,32 @@ for metric, key in [
             out[key] = f"{statistics.mean(vals):.1f}"
 
 # Sleep — 用 totalSleep 和 sleepStart/sleepEnd（Apple Watch 原生字段）
+# Fitnexa 不报告 REM（会写0），优先选 Apple Watch / Oura 数据
 if 'sleep_analysis' in mm:
-    for p in mm['sleep_analysis']['data']:
+    # 排序：Apple Watch > Oura > 其他来源（Fitnexa 等不可靠源排最后）
+    records = mm['sleep_analysis']['data']
+    def _sleep_source_rank(r):
+        src = (r.get('source', '') or '').lower()
+        if 'apple' in src: return 0
+        if 'oura' in src: return 1
+        return 2
+    records = sorted(records, key=_sleep_source_rank)
+    for p in records:
         ts = float(p.get('totalSleep', 0))
         core = float(p.get('core', 0))
         deep = float(p.get('deep', 0))
         rem = float(p.get('rem', 0))
+        src = (p.get('source', '') or '').lower()
         sleep_start = p.get('sleepStart', '')
         sleep_end = p.get('sleepEnd', '')
+        # Fitnexa/Oura 等第三方源可能 rem=0 不准确，标 flag 但仍取值
+        rem_unreliable = (rem == 0 and 'fitnexa' in src)
         if ts > 0:
             out['sleep'] = f"{ts:.1f}"
             out['sleep_deep'] = f"{deep:.1f}"
             out['sleep_rem'] = f"{rem:.1f}"
+            if rem_unreliable:
+                out['sleep_rem_unreliable'] = 'true'
             out['sleep_start'] = sleep_start
             out['sleep_end'] = sleep_end
             break
@@ -290,6 +306,8 @@ if 'sleep_analysis' in mm:
             out['sleep'] = f"{core+deep+rem:.1f}"
             out['sleep_deep'] = f"{deep:.1f}"
             out['sleep_rem'] = f"{rem:.1f}"
+            if rem_unreliable:
+                out['sleep_rem_unreliable'] = 'true'
             out['sleep_start'] = sleep_start
             out['sleep_end'] = sleep_end
             break
@@ -313,11 +331,11 @@ if 'sleep_start' in out:
     except (ValueError, IndexError):
         pass
 
-# Active energy — 日总和（HAE 按小时分条，需汇总）
+# Active energy — 日总和（HAE 按小时分条，原始单位为 kJ，统一转成 kcal）
 if 'active_energy' in mm:
-    total_ae = sum(p.get('qty', 0) or 0 for p in mm['active_energy']['data'])
-    if total_ae > 0:
-        out['active'] = f"{total_ae:.0f}"  # kJ
+    total_ae_kj = sum(p.get('qty', 0) or 0 for p in mm['active_energy']['data'])
+    if total_ae_kj > 0:
+        out['active'] = f"{total_ae_kj / 4.184:.0f}"  # kcal
 
 # VO2Max
 if 'vo2_max' in mm:
@@ -332,6 +350,32 @@ if 'time_in_daylight' in mm:
     total_dl = sum(p.get('qty', 0) or 0 for p in mm['time_in_daylight']['data'])
     if total_dl > 0:
         out['daylight_min'] = f"{total_dl:.0f}"
+
+# Blood Glucose (CGM) — 欧态 CGM，2026-07-09 起佩戴
+# Apple Health 的 blood_glucose 单位是 mg/dL
+# 关键指标：空腹均值、餐后峰值、日内波动幅度(CV%)、夜间均值
+if 'blood_glucose' in mm:
+    bg_pts = [(p['date'], p['qty']) for p in mm['blood_glucose']['data'] if p.get('qty')]
+    if bg_pts:
+        bg_vals = [v for _, v in bg_pts]
+        # 日均值
+        out['glucose_avg'] = f"{statistics.mean(bg_vals):.0f}"
+        out['glucose_min'] = f"{min(bg_vals):.0f}"
+        out['glucose_max'] = f"{max(bg_vals):.0f}"
+        out['glucose_n'] = str(len(bg_vals))
+        # 波动系数 CV% = std/mean*100，>36% 为高波动
+        if len(bg_vals) >= 4:
+            bg_mean = statistics.mean(bg_vals)
+            bg_stdev = statistics.stdev(bg_vals)
+            out['glucose_cv'] = f"{bg_stdev / bg_mean * 100:.0f}"  # CV%
+        # 空腹血糖：取 04:00-08:00 的均值
+        fasting = [v for d, v in bg_pts if 4 <= int(d.split()[1][:2]) < 8]
+        if fasting:
+            out['glucose_fasting'] = f"{statistics.mean(fasting):.0f}"
+        # 餐后峰值：取 12:00-14:00 和 18:00-20:00 的最大值
+        post_meal = [v for d, v in bg_pts if (12 <= int(d.split()[1][:2]) < 14) or (18 <= int(d.split()[1][:2]) < 20)]
+        if post_meal:
+            out['glucose_post_meal_peak'] = f"{max(post_meal):.0f}"
 
 # Respiratory rate (nighttime) — sleep quality indicator
 if 'respiratory_rate' in mm:
@@ -349,7 +393,7 @@ if 'walking_heart_rate_average' in mm:
         out['walk_hr'] = f"{sum(pts)/len(pts):.0f}"
 
 # VO2Max (from 6-year CSV — most complete source, not in daily JSON)
-vo2_csv = os.environ.get("VO2_CSV_PATH", "")  # 6 年健康导出 CSV 路径，通过环境变量配置
+vo2_csv = os.environ.get("VO2_CSV_PATH", "")  # 可选：完整健康导出 CSV 路径
 if os.path.exists(vo2_csv):
     try:
         with open(vo2_csv) as vf:
@@ -380,21 +424,35 @@ if os.path.exists(vo2_csv):
     except: pass
 
 # v7: 写入 daily-canonical.jsonl（跨日查询不再逐文件读取）
+# 20260713: append-only → upsert(merge)。同一天已存在则合并健康字段，
+# 保留其他模块写的字段（如 #34 environment）。原子写（tmp+replace）。
+# 否则 fetch-environment 等先写入的模块会"占位"，导致健康数据被跳过。
 canonical_file = os.path.expanduser("~/.life-log/daily-canonical.jsonl")
 try:
-    existing_dates = set()
+    records = []
     if os.path.exists(canonical_file):
         with open(canonical_file) as cf:
             for line in cf:
                 line = line.strip()
                 if line:
                     try:
-                        existing_dates.add(json.loads(line).get('date', ''))
+                        records.append(json.loads(line))
                     except: pass
-    if date not in existing_dates:
+    found = False
+    for rec in records:
+        if rec.get('date') == date:
+            rec.update(out)   # merge 健康字段，保留 environment 等其他模块字段
+            rec['date'] = date
+            found = True
+            break
+    if not found:
         out['date'] = date
-        with open(canonical_file, 'a') as cf:
-            cf.write(json.dumps(out, ensure_ascii=False) + '\n')
+        records.append(out)
+    tmp = canonical_file + ".tmp"
+    with open(tmp, 'w') as f:
+        for rec in records:
+            f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+    os.replace(tmp, canonical_file)
 except Exception:
     pass  # 静默失败，不影响主流程
 

@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""causal-explorer.py v2 — 跨日因果发现引擎
-用法: python3 causal-explorer.py
-
-⚠️ 使用前：
-  1. 配置 Looki 凭据: ~/.config/looki/credentials.json
-     {"api_key": "<YOUR_LOOKI_API_KEY>", "base_url": "https://open.looki.ai"}
-  2. 确保 ~/.life-log/ 下有足够天数的 Markdown 日志
-"""
+"""causal-explorer.py v2 — 通过 curl 子进程调用 Looki API，规避 SSL 问题"""
 import json, os, re, subprocess, sys
 from pathlib import Path
 from collections import defaultdict
@@ -15,9 +8,7 @@ LOG_DIR = Path.home() / ".life-log"
 CRED_FILE = Path.home() / ".config/looki/credentials.json"
 
 if not CRED_FILE.exists():
-    print("❌ Looki credentials not found at ~/.config/looki/credentials.json")
-    print("   Create it with: {\"api_key\": \"<YOUR_LOOKI_API_KEY>\", \"base_url\": \"https://open.looki.ai\"}")
-    sys.exit(1)
+    print("❌ Looki credentials not found"); sys.exit(1)
 
 creds = json.loads(CRED_FILE.read_text())
 BASE = creds["base_url"]
@@ -46,6 +37,10 @@ daily = {}
 for f in sorted(LOG_DIR.glob("2026-*.md")):
     date = f.stem
     text = f.read_text()
+    # P2 修复（2026-08-08）：跳过 Looki 断流时按日历估算的假评分（6/5、6/9、6/17 等）
+    # 这些天的精力分不是行为观察，是数据缺失时的估算值，混入基线会污染统计
+    if re.search(r'评分根据日历负载估算|评分不可用|非行为观察|Looki 未开启', text):
+        continue
     em = re.search(r'精力\s*\|\s*(\d+)/10', text)
     fm = re.search(r'专注\s*\|\s*(\d+)/10', text)
     sm = re.search(r'压力\s*\|\s*(\d+)/10', text)
@@ -81,6 +76,7 @@ for item in diet_items:
         print(f"  {date}  精力{daily[date]['energy']}  {desc[:80]}")
 
 if diet_data:
+    # 早餐信号
     with_bfast = [d for d in diet_data if "早餐" in d["desc"] and "补" not in d["desc"]]
     without_bfast = [d for d in diet_data if d not in with_bfast]
     if with_bfast and without_bfast:
@@ -122,6 +118,7 @@ print(f"\n{'═' * 50}")
 print("4. 初步因果发现")
 print("═" * 50)
 
+# 电话亭 ↔ 专注
 if "电话亭" in search_results:
     booth_dates = set(search_results["电话亭"]["dates"])
     booth_s = [daily[d]["focus"] for d in booth_dates if d in daily]
@@ -129,12 +126,14 @@ if "电话亭" in search_results:
     if booth_s and non_s:
         print(f"\n  📌 电话亭日专注 {sum(booth_s)/len(booth_s):.1f} vs 非电话亭日 {sum(non_s)/len(non_s):.1f}")
 
+# 总体基线
 es = [s["energy"] for s in daily.values()]
 fs = [s["focus"] for s in daily.values() if s["focus"]]
 ss = [s["stress"] for s in daily.values() if s["stress"]]
 if es:
     print(f"\n  📊 {len(daily)}天基线: 精力均值{sum(es)/len(es):.1f} 专注均值{sum(fs)/len(fs):.1f} 压力均值{sum(ss)/len(ss):.1f}")
 
+# 隔日对比
 if len(daily) >= 2:
     dates_sorted = sorted(daily.keys())
     print(f"\n  📈 日间变化:")
@@ -143,13 +142,14 @@ if len(daily) >= 2:
         curr = daily[dates_sorted[i]]
         print(f"     {dates_sorted[i-1]} → {dates_sorted[i]}: 精力{prev['energy']}→{curr['energy']} 专注{prev['focus']}→{curr['focus']}")
 
-# ═══ 5. 状态信号 → 精力关联 ═══
+# ═══ 5. 行为信号 → 精力关联（P3 修复 2026-08-08：数据驱动，不固定三类）═══
 print(f"\n{'═' * 50}")
-print("5. 状态信号 → 精力关联")
+print("5. 行为信号 → 精力关联（数据驱动）")
 print("═" * 50)
-print("  追踪：求救(刷手机)/代偿(零食可乐)/恢复(小憩) 信号与精力的关系")
+print("  追踪：当天日报里实际出现的行为信号（无论哪类）与精力的关系")
 
 def signal_corr(key, cn_name):
+    """对比 有该信号日 vs 无该信号日 的精力均值"""
     with_sig = [daily[d]["energy"] for d in daily if daily[d].get(key)]
     without_sig = [daily[d]["energy"] for d in daily if not daily[d].get(key)]
     sig_dates = sorted(d for d in daily if daily[d].get(key))
@@ -157,18 +157,45 @@ def signal_corr(key, cn_name):
         diff = sum(with_sig)/len(with_sig) - sum(without_sig)/len(without_sig)
         print(f"\n  📌 {cn_name}")
         print(f"     出现日精力均值 {sum(with_sig)/len(with_sig):.1f} ({len(with_sig)}天) vs 未出现日 {sum(without_sig)/len(without_sig):.1f} ({len(without_sig)}天)")
-        print(f"     差值 {diff:+.1f}  →  {'信号日精力更低，符合「求救/代偿」假设' if diff < -0.5 else ('信号日精力更高' if diff > 0.5 else '暂无明显差异')}")
+        print(f"     差值 {diff:+.1f}  →  {'信号日精力更低' if diff < -0.5 else ('信号日精力更高' if diff > 0.5 else '暂无明显差异')}")
         print(f"     出现日期: {sig_dates}")
     elif with_sig:
         print(f"\n  📌 {cn_name}: {len(with_sig)}天全部出现，无对照组")
     else:
         print(f"\n  📌 {cn_name}: 暂未在任何一天捕捉到")
 
-signal_corr("rescue", "🆘 精力求救信号 (刷手机/刷视频/发呆)")
-signal_corr("indulge", "🍬 代偿信号 (可乐/奶茶/零食/咖啡)")
-signal_corr("recover", "😴 恢复信号 (眯一会/小憩/午睡)")
+# P3：先动态扫描所有日志，收集实际出现的行为信号行（不只三类）
+# 每行格式如「🍬 **代偿/提神**（刺激物或零食补偿）: 吃零食」
+import re as _re
+signal_rows = {}  # signal_line -> [dates]
+for f in sorted(LOG_DIR.glob("2026-*.md")):
+    date = f.stem
+    text = f.read_text()
+    for m in _re.finditer(r'^[-*]\s*([^:]{2,30}?)\s*[:：]\s*(.{2,60})$', text, _re.M):
+        label = m.group(1).strip().lstrip('*').strip()
+        detail = m.group(2).strip()
+        # 只收录与行为信号相关的行（含 🆘/🍬/😴 emoji 或 求救/代偿/恢复/小憩/零食/刷手机 等关键词）
+        if any(k in label for k in ['求救', '代偿', '恢复', '🆘', '🍬', '😴']) or any(k in detail for k in ['刷手机', '零食', '可乐', '奶茶', '小憩', '午睡', '咖啡', '发呆']):
+            row = f"{label}: {detail}"
+            signal_rows.setdefault(row, []).append(date)
 
-print(f"\n  💡 注：信号需累积更多天才能验证因果方向。当前为趋势观察。")
+if signal_rows:
+    print(f"\n  实际捕捉到的行为信号行（{len(signal_rows)} 类）：")
+    for row, dates in sorted(signal_rows.items(), key=lambda x: -len(x[1])):
+        print(f"    {row}  ({len(dates)}天: {', '.join(dates[:6])}{'…' if len(dates)>6 else ''})")
+    # 对出现≥2天的信号行，计算有/无该行为日的精力差异（数据驱动，不预设三类）
+    print(f"\n  行为日 vs 无行为日 的精力差异（出现≥2天才算）：")
+    for row, dates in sorted(signal_rows.items(), key=lambda x: -len(x[1])):
+        if len(dates) < 2:
+            continue
+        with_e = [daily[d]["energy"] for d in dates if d in daily and daily[d].get("energy")]
+        without_e = [daily[d]["energy"] for d in daily if d not in dates and daily[d].get("energy")]
+        if with_e and without_e:
+            diff = sum(with_e)/len(with_e) - sum(without_e)/len(without_e)
+            verdict = "该行为日精力更低" if diff < -0.5 else ("该行为日精力更高" if diff > 0.5 else "无明显差异")
+            print(f"    {row} → {diff:+.1f} ({verdict})")
+else:
+    print("  日志中未捕捉到行为信号行（日报格式可能已变化）")
 
 print(f"\n{'═' * 50}")
 print(f"数据: {len(daily)}天日志, {len(diet_data)}条饮食, {len(search_results)}个搜索维度")
