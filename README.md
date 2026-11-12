@@ -2,13 +2,15 @@
 
 用 AI 把 Apple Watch 生理数据、可穿戴相机行为和日历，变成每天早上一条「昨天你是个什么样的人」的日报。
 
-**38 天迭代，从"凌晨一点取 89 步"到"四个指标刻画一天"。**
+**Skills 当前版（2026-11-12）：daily 6.0.0 / weekly 3.0.0 / trajectory 2.5.0。**
+
+Skill 是分析规范；仓库历史脚本和本机生产管线可能不同。先检查真实入口、覆盖和副作用，不能把安装Skill等同于已修复或部署生产晨报。
 
 ## 原理
 
-静息心率看身体压力、HRV 看恢复程度、睡眠时长看修复窗口、深睡/REM 看修复质量。这四个数据任何手环都给你——但从来没人告诉你应该这么读。
+系统对照个人参照、真实行为与同一时段的身体变化；单个HRV、静息心率或睡眠分期不能独立证明压力、恢复或生理机制。
 
-这套系统的核心不是记录，是帮你看到行为和生理之间那条**只属于你的因果链路**。
+目标是建立可复核的个人关联与待验证假设，逐步探索行为和身体的关系。
 
 ## 你需要什么
 
@@ -47,16 +49,25 @@ mkdir -p ~/.life-log/tmp
 cp scripts/* ~/.life-log/tmp/
 chmod +x ~/.life-log/tmp/*.sh
 
-# 放好 Skill 文件（Proma 用户）
-cp skills/lifereview-daily/SKILL.md ~/.proma/agent-workspaces/default/skills/lifereview-daily/SKILL.md
-cp skills/lifereview-weekly/SKILL.md ~/.proma/agent-workspaces/default/skills/lifereview-weekly/SKILL.md
-cp skills/lifereview-trajectory-map/SKILL.md ~/.proma/agent-workspaces/default/skills/lifereview-trajectory-map/SKILL.md
-# 轨迹 skill 的批量生成脚本（可选，需 DeepSeek API）
-mkdir -p ~/.proma/agent-workspaces/default/skills/lifereview-trajectory-map/scripts
-cp skills/lifereview-trajectory-map/scripts/* ~/.proma/agent-workspaces/default/skills/lifereview-trajectory-map/scripts/
+# 完整安装Skills（包括references、evals和scripts）
+# 先检查差异；有差异时退出码为1，不写文件
+python3 scripts/sync-skills.py --workspace ~/.proma/agent-workspaces/default
+# 确认目标后安装，旧包会完整备份；备份目录须未用于同一包
+python3 scripts/sync-skills.py --workspace ~/.proma/agent-workspaces/default \
+  --apply --backup-dir ~/lifereview-skill-backup-20261112
+# 多工作区可重复传 --workspace；不要只复制SKILL.md
 ```
 
-> **lifereview-trajectory-map** 是「生命轨迹」生成 skill（2026-08-08 起）：把一天的行为×身体读成时间轴，每个节点必须有真实行为锚点 + 同窗身体回应，解释性数字必须带个人基线或对比坐标，末尾给两句跨维度洞察。支持一次生成多个真正不同的版本；`references/aug04-input.json` 是脱敏示例输入，`evals/` 是评测样例。
+三个Skill分别负责完整日报、七日汇总和行为×身体轨迹。周报读取日报包的现行分析契约；轨迹允许安排背景与稀疏日达标身体信号，不凑节点或两句洞察。安装保留历史目录ID以兼容既有调用，三个包的版本号独立演进，无需相同。
+
+`references/aug04-input.json`为仓库既有示例；日常验证优先使用各包`evals/evals.json`中的合成输入。可选云端runner默认只生成1版，需要明确配置兼容Anthropic Messages的模型与服务地址；输入将发送至所配置服务。正常使用Skill可以直接在Agent内完成。
+
+```bash
+python3 -m unittest discover -s tests -v
+# 可选：已有明确云端处理授权并设置PROMA_API_KEY后
+python3 skills/lifereview-trajectory-map/scripts/run_deepseek_resumable.py \
+  --input facts.json --outdir output --model YOUR_MODEL --api-root https://YOUR_HOST/v1
+```
 
 ### 3. 替换占位符
 

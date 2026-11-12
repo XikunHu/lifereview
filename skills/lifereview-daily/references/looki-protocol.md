@@ -1,58 +1,19 @@
-# Looki API 协议参考
+# Looki协议
 
-## 双管道架构
+## 取数与状态
 
-| 管道 | 延迟 | 内容 |
-|------|------|------|
-| 🔵 Moments | 数小时（AI 离线处理） | 完整场景片段 |
-| 🟢 Realtime | 即时（蓝牙上传） | 当前实时状态 |
+- 使用已配置客户端或HTTPS API，保留证书与主机名校验。不关闭TLS验证，不固定旧IP；网络失败按当前代理配置诊断。
+- Moments是AI处理后的场景，可能延迟；Realtime只代表当前状态。需要判断当前在线状态时可分别查两者，历史复盘只查目标日Moments/已保存行为，不能用当前Realtime证明历史在线。
+- 取数成功有记录=ok；成功无记录=empty；超时/鉴权/解析失败=failed；用户要求不读Looki=disabled。四者在数据审计区分，失败可有界重试一次，不能把failed显示为“当天无行为”。
+- 凭据从现有安全配置读取；不写入Skill、命令示例、代码或日志。当前工具不可用时不假装已拉取。
 
-## 调用规则
+## 端点线索
 
-1. **先 realtime → 后 moments**
-2. Moments=0 ≠ Looki 离线——先查 realtime
-3. realtime 有 + moments=0 → 「🟢 Looki 在线，moments 生成中」
-4. realtime 空 + moments=0 → 「🔴 Looki 可能离线」
+现有API客户端可能使用`/moments?on_date=YYYY-MM-DD`、`/moments/calendar`、`/moments/search`、`/realtime/latest-event`。域名和实际响应以当前配置/服务文档为准，不把旧端点可用性当保证。
 
-## VPN 绕过
+## 无Looki模式
 
-mihomo/Tyty 透明代理拦截 `open.looki.ai` 的 DNS 和 TLS SNI。必须用 Python + 直连 IP：
-
-```python
-import urllib.request, ssl, json
-API_KEY = '<YOUR_LOOKI_API_KEY>'
-IP = '<YOUR_LOOKI_SERVER_IP>'  # 直连真实 IP，绕过 DNS 劫持
-ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
-req = urllib.request.Request(f'https://{IP}/api/v1/moments?on_date=DATE',
-    headers={'Host': 'open.looki.ai', 'X-API-Key': API_KEY})
-```
-
-## API 端点
-
-- `GET /moments?on_date=YYYY-MM-DD`
-- `GET /moments/calendar?start_date=...&end_date=...`
-- `GET /moments/search?query=...&page_size=10`
-- `GET /me`
-- `GET /realtime/latest-event`
-- `GET /for_you/items?limit=20&group=comic`
-
-## 离线日协议
-
-Looki 未开启时启用日历+生理替代模式：
-
-### 运动检测（最高优先级）
-1. 步数小时分布——连续 2h >500 步 + 活跃 >100kJ → 运动
-2. 距离小时峰值——单小时 >1.5km → 跑步
-3. AutoSync/Workouts/ 目录——`running_*` 文件 = 确认的跑步
-
-### 评分替代
-- 精力：RHR 偏离度 + 睡眠 + 运动 + 日历
-- 专注：睡眠 + HRV + 日历间隙
-- 压力：日历密度 + 晚间跨度
-- 标注 `⚠️ Looki 离线，基于日历+生理估算`
-
-### 日历分类
-- 协作：含「会/讨论/对齐/评审/周会/同步/沟通/汇报/方案」
-- 产出：含「写/搞/做/整理/准备/材料/文档」
+- 使用日历作为安排背景，使用可靠设备记录作为活动或睡眠事实；不能把日历执行、刷手机、咖啡、饮食、小憩补出来。
+- 步数或距离上升只说明移动，不能自动命名跑步；低步数不说明坐着、休息或未佩戴。运动类型来自结构化训练或明确确认。
+- 不再用日历、生理指标补算精力/压力评分。缺少起床或真实开工时间时awake_to_work_gap不可算。
+- 如使用本机`daily-brief-ad.py --no-looki`，先检查相邻引擎实际可加载；该开关不禁止模型调用与发送，不是预览开关。

@@ -1,73 +1,36 @@
 # 数据管线参考
 
-## HAE 多通道同步机制 ⚠️
+以 analysis-contract.md 的日期、聚合与覆盖规则为准。目录和速度只是配置线索，不能代替读取本次文件证据。
 
-Health Export 的数据不是单文件同步——有三条独立的管线，速度不同。
+## 常见 HAE 目录
 
-### 目录结构
-
-```
+```text
 HealthExport/Documents/
-├── iCloud for Proma/        ← 主 JSON 管线（最慢，延迟可达 7h+）
-├── AutoSync/
-│   ├── Workouts/            ← 🏃 运动记录（独立通道！结束几分钟后就到）
-│   ├── Routes/              ← GPS 轨迹
-│   └── HealthMetrics/       ← 113 个指标 .hae 文件
-├── Automations/
-└── 新自动化流程/            ← 旧版目录
+├── iCloud for Proma/       # HealthAutoExport-YYYY-MM-DD.json
+├── 新自动化流程/           # 部分旧安装的备用 JSON
+└── AutoSync/
+    ├── Workouts/           # 独立训练记录
+    ├── Routes/             # GPS（按任务需要才读取）
+    └── HealthMetrics/      # 各指标 .hae
 ```
 
-### 同步速度差异（实测）
+本机路径优先从现有配置读取，不把某个人的iCloud路径硬编码到公共Skill。三个通道独立同步，不承诺哪个永远先到。文件夹mtime不代表文件内容到达；新文件也可能不完整。
 
-| 管线 | 延迟 | 晚间运动数据 |
-|------|------|------------|
-| 🏃 Workouts/ | **0.8h** | ✅ 完整 |
-| 📊 AutoSync .hae | 6.7h | ❌ 16点后常停 |
-| 📄 主 JSON | 7.7h | ❌ 滞后半天 |
+## 读取检查
 
-### 运动数据提取规则
+1. 定位目标日期的源文件，检查内部日期、单位、最新样本和样本间隙。
+2. macOS iCloud SF_DATALESS占位跳过并记录，避免无期限阻塞。不能把读取失败当零。
+3. `.hae` 为LZFSE流时从文件开头解压；不要无条件丢弃“前4字节”。格式不匹配就明确失败，不猜私有header。
+4. 确认每项是增量、累计、单次观测还是聚合记录，再选择sum/mean/median；跨设备重叠去重。
+5. 训练时间可能使用CFAbsoluteTime；只有字段声明该口径才加978307200转Unix，不对所有时间戳统一加偏移。
+6. 历史日期看覆盖，实时晨报额外看同步状态。回退旧数据时明确实际日期。
 
-1. **优先查 Workouts/**——不要等主 JSON
-2. 文件命名：`{type}_{date}_{UUID}.hae`
-3. 解析：前 4 字节 `bvx-` 头 + JSON payload
-4. 时间戳：CFAbsoluteTime + 978307200 = Unix
-5. 步数/活跃 < 预期且 Workouts/ 有新文件 → 数据不完整
+## canonical与提取脚本
 
-### 文件夹 mtime ≠ 文件 mtime
+`daily-canonical.jsonl`通常位于本机运行数据目录，包含历史逐日摘要。使用前核对日期唯一性、来源、单位与处理版本；不能假定它永远比原始文件正确。不要将运行数据和凭据同步进公开仓库。
 
-iCloud 可能只更新目录元数据，不以文件夹 mtime 判断数据新鲜度。只看文件 mtime 和内部时间戳。
+现有`health-extract.py`可能会去重并回写canonical；读取报告不等于允许修复或重建缓存。需要重新提取时先核对副作用与任务授权。`health-freshness.py`只作实时辅助，不用当前mtime给历史完整性打分。
 
-## 数据新鲜度检查 ⚠️
+## 可选REST通道
 
-每次报告前必须跑 `health-freshness.py <date>`。
-
-| mtime_age_h | 状态 | 输出 |
-|-------------|------|------|
-| ≤2h | ✅ 新鲜 | — |
-| 2-4h | ✅ 可接受 | 可能有延迟 |
-| 4-8h | ⚠️ 过期 | 解读可能不完整 |
-| >8h | 🔴 严重过期 | 优先用日历+Looki |
-
-## 数据自查清单
-
-1. HAE 存储粒度是每小时还是每天？
-2. 每小时 → **sum()**（不是 first/last）
-3. 多点采样 → **median()**（抗离群）
-4. 单条记录 → first
-5. 取数后人工核对（步数 <10 基本是 bug）
-
-## REST 接收器（可选，推荐）
-
-HAE App 支持 POST 到自定义 URL。跑 `rest-receiver.py` 后，iPhone 通过 WiFi 直推数据到 Mac，秒级到达，绕开 iCloud 延迟。
-
-```bash
-python3 ~/.life-log/tmp/rest-receiver.py --port 8765
-```
-
-HAE App 配置：Custom REST Endpoint → `http://<Mac-IP>:8765/health`
-
-## daily-canonical 表（v7 新增）
-
-health-extract.py v7 每次运行后自动追加一行到 `~/.life-log/daily-canonical.jsonl`（JSONL 格式，每行一天）。自动按日期去重，同一天不会重复写入。
-
-**用途**：周报/月报不再需要逐日重读原始 JSON 文件——直接读 canonical 文件，Python 一行搞定 `[json.loads(l) for l in open('daily-canonical.jsonl')]`。
+现有安装如已提供rest-receiver.py，可按配置读取HAE直推数据；审查Skill不默认启动接收服务、开放端口或更改手机同步设置。
